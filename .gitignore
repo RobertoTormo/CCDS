@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+*.env
+!.env.example
+*.key
+*.pem
+*.crt
+secrets/
+
+# Local data from bind mounts during development
+data/
+backups/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
