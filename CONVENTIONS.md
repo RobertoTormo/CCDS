@@ -3,10 +3,6 @@
 > **Status: PROPOSAL** — to be discussed and approved by the whole team.
 > Items marked ❓ are open decisions.
 
-The goal of this file is that four people can work on four stacks in parallel
-and the pieces fit together at integration time without renaming everything.
-
----
 
 ## 1. Repository layout
 
