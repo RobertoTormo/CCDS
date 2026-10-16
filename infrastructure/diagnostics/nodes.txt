@@ -1,0 +1,4 @@
+ID                            HOSTNAME   STATUS    AVAILABILITY   MANAGER STATUS   ENGINE VERSION
+wi0ubvxvhxjilpj76wltd8npa *   balkan1    Ready     Active         Leader           29.8.2
+ewx0az6iw4pwbpy71bogarkhh     balkan2    Ready     Active                          29.8.2
+cw6p6ytvhsq02egpql2ejjfrc     balkan3    Ready     Active                          29.8.2

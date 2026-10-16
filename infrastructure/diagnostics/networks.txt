@@ -1,0 +1,11 @@
+NETWORK ID     NAME              DRIVER    SCOPE
+dfbe81a34910   app_default       bridge    local
+08iryq9xv7jy   backend           overlay   swarm
+813c149faa47   bridge            bridge    local
+qgc428dwfu6t   cloudnet          overlay   swarm
+0b8fb91bd400   docker_gwbridge   bridge    local
+mlvoa20260me   frontend          overlay   swarm
+d61dbc101885   host              host      local
+11ghbk4xwk29   ingress           overlay   swarm
+xn6xbrwyiw2o   nfstest_default   overlay   swarm
+ba52cd169ae6   none              null      local
