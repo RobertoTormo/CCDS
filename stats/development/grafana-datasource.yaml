@@ -1,0 +1,38 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+
+    # Grafana's server connects through the Compose network.
+    access: proxy
+    url: http://prometheus:9090
+
+    # Select this source by default when creating panels.
+    isDefault: true
+    jsonData:
+      # Match our Prometheus scrape interval.
+      timeInterval: 15s
+
+  - name: App PostgreSQL
+
+    type: postgres
+
+    # Reach PostgreSQL through the shared app network
+    url: postgres:5432
+
+      # Grafana substitutes these from its container environment.
+    user: $GRAFANA_DB_USER
+    secureJsonData:
+      password: $GRAFANA_DB_PASSWORD
+
+    jsonData:
+      database: $POSTGRES_DB
+
+        # Local development only. Poduction TLS needs separate configuration
+      sslmode: disable
+
+        # Query-builder version code matching the app's PostgreSQL 17 image
+      postgresVersion: 1700
+
+    # Keep Prometheus as the default for existing monitoring panels
+    isDefault: false

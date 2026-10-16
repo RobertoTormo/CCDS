@@ -48,6 +48,13 @@ services:
 
   grafana:
     image: grafana/grafana:13.2.4
+
+    environment:
+      # Pass the reader credentials and database name into Grafana
+      GRAFANA_DB_USER: ${GRAFANA_DB_USER:?Set GRAFANA_DB_USER}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?Set GRAFANA_DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+
     #Configure connection to prometheus
     configs:
       - source: grafana_datasource
@@ -65,8 +72,33 @@ services:
       - grafana_data:/var/lib/grafana
     ports:
       - '127.0.0.1:8202:3000'
-# Declare persistent storage managed by Docker
+    
+    networks:
+      # Keep access to Prometheus in the stats project
+      - default
 
+      # Allow Grafana to reach the app's PostgreSQL service
+      - app_backend
+
+  blackbox:
+
+    image: prom/blackbox-exporter:v0.29.0
+    command:
+      # Load our check definitions
+      - '--config.file=/etc/blackbox/blackbox.yaml'
+    configs:
+      - source: blackbox_config
+        target: /etc/blackbox/blackbox.yaml
+    networks:
+      # Allow Prometheus to reach this exporter
+      - default
+      # Allow the exporter to check the app services
+      - app_backend
+    restart: unless-stopped
+
+
+
+# Declare persistent storage managed by Docker
 volumes:
   prometheus_data:
   grafana_data:
@@ -85,3 +117,12 @@ configs:
   # Panels, queries and layout
   node_overview:
     file: ./node-overview.json
+
+  blackbox_config:
+    # Supply the check definitions as configuration
+    file: ./blackbox-prometheus.yaml
+
+networks:
+  app_backend:
+    external: true
+    name: app_default #from app project network
