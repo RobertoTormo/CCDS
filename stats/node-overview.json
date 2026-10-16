@@ -1,0 +1,198 @@
+{
+  "uid": "node-overview",
+  "title": "Node overview",
+  "description": "CPU, memory, load and metrics collection monitoring",
+  "tags": ["infrastructure"],
+  "schemaVersion": 39,
+  "editable": false,
+  "refresh": "15s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU usage",
+      "description": "Average non-idle CPU percentage across logical CPUs, calculated over one minute.",
+      "type": "timeseries",
+      "datasource": null,
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job=\"node-exporter\",mode=\"idle\"}[1m])))",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Memory usage",
+      "description": "Percentage of RAM in use, calculated from total minus available memory",
+      "type": "timeseries",
+      "datasource": null,
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node-exporter\"} / node_memory_MemTotal_bytes{job=\"node-exporter\"})",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Metrics collection",
+      "description": "Shows whether Prometheus can reach Node Exporter. This checks metrics collection, not application health.",
+      "type": "stat",
+      "datasource": null,
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "Unreachable", "color": "red" },
+                "1": { "text": "Connected", "color": "green" }
+              }
+            }
+          ],
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "text": {
+          "titleSize": 14,
+          "valueSize": 24
+        },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"node-exporter\"}",
+          "instant": true,
+          "legendFormat": "Node Exporter"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "System load — 1 minute",
+      "description": "Average number of runnable tasks or tasks in uninterruptible sleep, commonly waiting for I/O. Interpret relative to the number of logical CPUs.",
+      "type": "timeseries",
+      "datasource": null,
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_load1{job=\"node-exporter\"}",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+  "id": 5,
+  "title": "Container CPU usage",
+  "description": "CPU cores consumed by each container, averaged over one minute. A value of 1 means one logical CPU is fully occupied; 0.5 means half a CPU.",
+  "type": "timeseries",
+  "datasource": null,
+  "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "short",
+      "min": 0,
+      "decimals": 3
+    },
+    "overrides": []
+  },
+  "options": {
+    "legend": {
+      "displayMode": "list",
+      "placement": "bottom"
+    },
+    "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+    }
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "sum by (instance, id) (rate(container_cpu_usage_seconds_total{job=\"cadvisor\",id=~\"/docker/[0-9a-f]+\"}[1m]))",
+      "legendFormat": "{{id}}"
+    }
+  ]
+},
+{
+  "id": 6,
+  "title": "Container memory usage",
+  "description": "Memory working set for each container.",
+  "type": "timeseries",
+  "datasource": null,
+  "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "bytes",
+      "min": 0,
+      "decimals": 1
+    },
+    "overrides": []
+  },
+  "options": {
+    "legend": {
+      "displayMode": "list",
+      "placement": "bottom"
+    },
+    "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+    }
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "container_memory_working_set_bytes{job=\"cadvisor\",id=~\"/docker/[0-9a-f]+\"}",
+      "legendFormat": "{{id}}"
+    }
+  ]
+}
+  ]
+}
