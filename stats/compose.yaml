@@ -1,0 +1,87 @@
+services:
+  node-exporter:
+    
+    image: prom/node-exporter:v1.10.2
+
+    command:
+      # Read kernel metrics from the mounted host /proc
+      - '--path.procfs=/host/proc'
+      # Read hardware and device information from the mounted host /sys
+      - '--path.sysfs=/host/sys'
+
+      # Disable collectors that expect additional host access
+      - '--collector.disable-defaults'
+
+      # Collect CPU, memory and system load
+      - '--collector.cpu'
+      - '--collector.meminfo'
+      - '--collector.loadavg'
+
+    volumes:
+      # Read-only mounts
+      - '/proc:/host/proc:ro'
+      - '/sys:/host/sys:ro'
+
+    ports:
+      # Make container port 9100 accessible at localhost:8200
+      - "127.0.0.1:8200:9100"
+
+    # Restart after a crash or Docker restart
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+
+    configs:
+      # Give this container access to the configuration declared below
+      - source: prometheus_config
+
+        target: /etc/prometheus/prometheus.yml
+
+    volumes:
+      # Attach persistent metric storage at Prometheus's data directory
+      - prometheus_data:/prometheus
+
+    ports:
+      # Local access to the Prometheus interface
+      - '127.0.0.1:8201:9090'
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    #Configure connection to prometheus
+    configs:
+      - source: grafana_datasource
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+
+        #Tells grafana where to find dashboards JSON files
+      - source: grafana_dashboards
+        target: /etc/grafana/provisioning/dashboards/default.yaml
+
+      - source: node_overview
+        target: /etc/grafana/dashboards/node-overview.json
+
+    volumes:
+      # Store Grafana's users, settings and saved dashboards
+      - grafana_data:/var/lib/grafana
+    ports:
+      - '127.0.0.1:8202:3000'
+# Declare persistent storage managed by Docker
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+configs:
+  prometheus_config:
+    file: ./prometheus.yaml
+
+  grafana_datasource:
+    file: ./grafana-datasource.yaml
+
+  # Dashboard discovery settings
+  grafana_dashboards:
+    file: ./grafana-dashboards.yaml
+
+  # Panels, queries and layout
+  node_overview:
+    file: ./node-overview.json
