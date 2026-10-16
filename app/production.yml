@@ -1,0 +1,124 @@
+
+version: "3.8"
+
+services:
+  core:
+    image: 10.0.0.4:5000/core-app:1.2
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+    secrets:
+      - db_password
+    networks:
+      - frontend
+      - backend
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=frontend"
+        - "traefik.http.routers.core.rule=PathPrefix(`/api`)"
+        - "traefik.http.routers.core.entrypoints=web"
+        - "traefik.http.routers.core.middlewares=core-strip"
+        - "traefik.http.middlewares.core-strip.stripprefix.prefixes=/api"
+        - "traefik.http.services.core.loadbalancer.server.port=5000"
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == balkan1
+      restart_policy:
+        condition: on-failure
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data_prod:/data
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == balkan1
+      restart_policy:
+        condition: on-failure
+
+  backup:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+      BACKUP_DIR: /backups
+    secrets:
+      - db_password
+    volumes:
+      - nfsvolume:/backups
+    networks:
+      - backend
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        export PGPASSWORD="$$(cat /run/secrets/db_password)"
+        while true; do
+          until pg_isready -h postgres -p 5432 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"; do
+            sleep 5
+          done
+          timestamp=$$(date +%Y%m%d_%H%M%S)
+          tmp="/backups/coredb_$${timestamp}.dump.partial"
+          final="/backups/coredb_$${timestamp}.dump"
+          if pg_dump -h postgres -p 5432 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -Fc -f "$$tmp" && test -s "$$tmp"; then
+            mv "$$tmp" "$$final"
+            echo "Backup completed: $$final"
+            find /backups -type f -name 'coredb_*.dump' -mtime +7 -delete
+          else
+            rm -f "$$tmp"
+            echo "Backup failed" >&2
+          fi
+          sleep 86400
+        done
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == balkan1
+      restart_policy:
+        condition: on-failure
+
+networks:
+  frontend:
+    external: true
+  backend:
+    external: true
+
+volumes:
+  postgres_data_prod:
+  redis_data_prod:
+  nfsvolume:
+    external: true
+
+secrets:
+  db_password:
+    external: true
