@@ -1,0 +1,26 @@
+
+version: "3.8"
+
+services:
+  registry:
+    image: registry:2
+    ports:
+      - target: 5000
+        published: 5000
+        protocol: tcp
+        mode: host
+    volumes:
+      - /srv/registry:/var/lib/registry
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == balkan1
+      restart_policy:
+        condition: on-failure
+
+networks:
+  backend:
+    external: true
