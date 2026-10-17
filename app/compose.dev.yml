@@ -59,6 +59,31 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
+  grafana-db-setup:
+    image: postgres:17
+    environment:
+      # Administrator credentials are used only to configure the reader account
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+
+      # Credentials for Grafana's separate account
+      GRAFANA_DB_USER: ${GRAFANA_DB_USER:?Set GRAFANA_DB_USER}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?Set GRAFANA_DB_PASSWORD}
+
+    volumes:
+      - ./setup-grafana-reader.sh:/setup.sh:ro
+
+    # Run the script
+    entrypoint: ["/bin/sh", "/setup.sh"]
+
+    depends_on:
+      - postgres
+      - core
+
+    # Exit after setup
+    restart: "no"
+
 volumes:
   postgres_data:
   redis_data:

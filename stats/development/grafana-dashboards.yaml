@@ -1,0 +1,16 @@
+apiVersion: 1
+providers:
+  - name: infrastructure
+
+    # Place the dashboard in this Grafana folder
+    folder: Infrastructure
+    type: file
+
+    # Keep dashboard changes in JSON file
+    allowUiUpdates: false
+
+    disableDeletion: true
+
+    options:
+      # Directory inside Grafana containing dashboard JSON files
+      path: /etc/grafana/dashboards

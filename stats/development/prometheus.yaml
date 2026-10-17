@@ -1,0 +1,60 @@
+global:
+  # Collect a new sample every 15 seconds.
+  scrape_interval: 15s
+
+scrape_configs:
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          # Identify the local Linux environment being monitored
+          # In production, Swarm discovery will supply each node's name
+          node: local
+
+  - job_name: service-health
+    # Blackbox performs checks through its /probe endpoint
+    metrics_path: /probe
+
+    static_configs:
+      # Check whether the Core API responds.
+      - targets: ['http://core:5000/']
+        labels:
+          service: Core API
+          module: http_200
+
+      # This endpoint also executes SELECT 1 against PostgreSQL
+      - targets: ['http://core:5000/health']
+        labels:
+          service: API database check
+          module: http_200
+
+      # Check whether Apache serves the static website.
+      - targets: ['http://static:80/']
+        labels:
+          service: Static website
+          module: http_200
+
+      # Send PING to Redis and require PONG.
+      - targets: ['redis:6379']
+        labels:
+          service: Redis
+          module: redis_ping
+
+    relabel_configs:
+      # Pass the service address to Blackbox as the target parameter
+      - source_labels: [__address__]
+        target_label: __param_target
+
+      # Select the check definition from blackbox.yaml
+      - source_labels: [module]
+        target_label: __param_module
+
+      # Preserve the checked address for troubleshooting
+      - source_labels: [__param_target]
+        target_label: instance
+
+      # Send the scrape request to Blackbox, which performs the check
+      - target_label: __address__
+        replacement: blackbox:9115
+

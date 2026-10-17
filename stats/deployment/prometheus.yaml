@@ -1,0 +1,109 @@
+global:
+  # Collect a new sample every 15 seconds.
+  scrape_interval: 15s
+
+scrape_configs:
+
+  - job_name: node-exporter
+
+    dockerswarm_sd_configs:
+      # Ask the manager for the individual service containers
+      - host: unix:///var/run/docker.sock
+        role: tasks
+
+        # Connect to each task on Node Exporter's listening port
+        port: 9100
+
+    relabel_configs:
+
+      # Keep only the Node Exporter service from that stack
+      - source_labels: [__meta_dockerswarm_service_name]
+        regex: stats_node-exporter
+        action: keep
+
+      # Exclude tasks that Swarm intends to shut down
+      - source_labels: [__meta_dockerswarm_task_desired_state]
+        regex: running
+        action: keep
+
+      # Use the monitoring stack's default overlay network
+      - source_labels: [__meta_dockerswarm_network_name]
+        regex: stats_default
+        action: keep
+
+      # Add the readable node name expected by our dashboard
+      - source_labels: [__meta_dockerswarm_node_hostname]
+        target_label: node
+
+  - job_name: service-health
+    # Blackbox performs checks through its /probe endpoint
+    metrics_path: /probe
+
+    static_configs:
+      # Check whether the Core API responds.
+      - targets: ['http://coreprod_core:5000/']
+        labels:
+          service: Core API
+          module: http_200
+
+      # This endpoint also executes SELECT 1 against PostgreSQL
+      - targets: ['http://coreprod_core:5000/health']
+        labels:
+          service: API database check
+          module: http_200
+
+      # Check whether Apache serves the static website.
+    #  - targets: ['http://static:80/']
+     #   labels:
+      #    service: Static website
+     #     module: http_200
+
+      # Send PING to Redis and require PONG.
+      - targets: ['coreprod_redis:6379']
+        labels:
+          service: Redis
+          module: redis_ping
+
+    relabel_configs:
+      # Pass the service address to Blackbox as the target parameter
+      - source_labels: [__address__]
+        target_label: __param_target
+
+      # Select the check definition from blackbox.yaml
+      - source_labels: [module]
+        target_label: __param_module
+
+      # Preserve the checked address for troubleshooting
+      - source_labels: [__param_target]
+        target_label: instance
+
+      # Send the scrape request to Blackbox, which performs the check
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  - job_name: cadvisor
+    dockerswarm_sd_configs:
+      # Discover individual cAdvisor tasks through the manager
+      - host: unix:///var/run/docker.sock
+        role: tasks
+        port: 8080
+
+    relabel_configs:
+      # Select cAdvisor from our planned stats stack
+      - source_labels: [__meta_dockerswarm_service_name]
+        regex: stats_cadvisor
+        action: keep
+
+      # Exclude tasks that Swarm intends to stop
+      - source_labels: [__meta_dockerswarm_task_desired_state]
+        regex: running
+        action: keep
+
+      # Scrape through the monitoring overlay network
+      - source_labels: [__meta_dockerswarm_network_name]
+        regex: stats_default
+        action: keep
+
+      # Identify which node owns the reported containers
+      - source_labels: [__meta_dockerswarm_node_hostname]
+        target_label: node
