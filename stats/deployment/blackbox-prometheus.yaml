@@ -1,0 +1,19 @@
+modules:
+  http_200:
+    # Require an HTTP 200 response within five seconds.
+    prober: http
+    timeout: 5s
+    http:
+      preferred_ip_protocol: ip4
+      valid_status_codes: [200]
+      follow_redirects: false
+
+  redis_ping:
+    # Require a Redis response, not just an open port.
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+      query_response:
+        - send: "PING"
+        - expect: '^\+PONG'

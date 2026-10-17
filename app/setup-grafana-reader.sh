@@ -1,10 +1,29 @@
 #!/bin/sh
 set -eu
 
-# Connection settings for the existing database administrator
+# Load production passwords from Swarm secrets when paths are provided
+# Otherwise, keep the environment values used in development
+if [ -n "${POSTGRES_PASSWORD_FILE:-}" ]; then
+  POSTGRES_PASSWORD="$(cat "$POSTGRES_PASSWORD_FILE")"
+fi
+
+if [ -n "${GRAFANA_DB_PASSWORD_FILE:-}" ]; then
+  GRAFANA_DB_PASSWORD="$(cat "$GRAFANA_DB_PASSWORD_FILE")"
+fi
+
+# Prevent accidentally changing the administrator's password
+if [ "$GRAFANA_DB_USER" = "$POSTGRES_USER" ]; then
+  echo "Grafana's reader must differ from the database administrator" >&2
+  exit 1
+fi
+
+# Connect as the existing database administrator
 export PGHOST=postgres PGCONNECT_TIMEOUT=3
 export PGUSER="$POSTGRES_USER" PGDATABASE="$POSTGRES_DB"
 export PGPASSWORD="$POSTGRES_PASSWORD"
+
+# Make the reader password available to psql's \getenv command.
+export GRAFANA_DB_PASSWORD
 
 # Wait for the database and the table created by Core
 # Stop retrying after 30 attempts
