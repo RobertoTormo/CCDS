@@ -1,0 +1,6 @@
+ID             NAME              MODE         REPLICAS   IMAGE                   PORTS
+422kici3vpth   nfstest_test      replicated   3/3        nginx:latest            
+y7zdyq0hyol5   test_nginx        replicated   3/3        nginx:latest            
+czojag1213q2   traefik_traefik   replicated   1/1        traefik:v2.11           *:81->80/tcp, *:8080->8080/tcp
+txeyu1q50o76   web               replicated   3/3        nginx:latest            *:80->80/tcp
+jcae63t0vste   whoami_whoami     replicated   2/2        traefik/whoami:latest   

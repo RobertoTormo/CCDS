@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  test:
+    image: nginx
+    volumes:
+      - nfsvolume:/usr/share/nginx/html
+    deploy:
+      replicas: 3
+
+volumes:
+  nfsvolume:
+    external: true

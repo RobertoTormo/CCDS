@@ -1,0 +1,504 @@
+{
+  "uid": "node-overview",
+  "title": "Project monitoring",
+  "description": "CPU, memory, load and metrics collection monitoring",
+  "tags": ["infrastructure"],
+  "schemaVersion": 39,
+  "editable": false,
+  "refresh": "15s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "templating": {
+  "list": [
+    {
+      "name": "node",
+      "label": "Node",
+      "description": "Discover node names from Prometheus and filter the node panels.",
+      "type": "query",
+      "datasource": null,
+      "query": {
+        "qryType": 1,
+        "label": "node",
+        "metric": "up",
+        "labelFilters": [
+          {
+            "key": "job",
+            "operator": "=",
+            "value": "node-exporter"
+          }
+        ],
+        "query": "label_values(up{job=\"node-exporter\"}, node)",
+        "refId": "NodeVariable"
+      },
+      "refresh": 2,
+      "sort": 1,
+      "multi": true,
+      "includeAll": true,
+      "allValue": ".*",
+      "current": {
+        "text": "All",
+        "value": "$__all"
+      }
+    }
+  ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU usage",
+      "description": "Average non-idle CPU percentage across logical CPUs for each selected node. Grafana adjusts the calculation window to the time range and scrape interval.",
+      "type": "timeseries",
+      "datasource": null,
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - avg by (node) (rate(node_cpu_seconds_total{job=\"node-exporter\",node=~\"$node\",mode=\"idle\"}[$__rate_interval])))",
+          "legendFormat": "{{node}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Memory usage",
+      "description": "Percentage of RAM in use, calculated from total minus available memory",
+      "type": "timeseries",
+      "datasource": null,
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node-exporter\",node=~\"$node\"} / node_memory_MemTotal_bytes{job=\"node-exporter\",node=~\"$node\"})",
+          "legendFormat": "{{node}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Metrics collection",
+      "description": "Shows whether Prometheus can reach Node Exporter. This checks metrics collection, not application health.",
+      "type": "stat",
+      "datasource": null,
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "Unreachable", "color": "red" },
+                "1": { "text": "Connected", "color": "green" }
+              }
+            }
+          ],
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "text": {
+          "titleSize": 14,
+          "valueSize": 24
+        },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"node-exporter\",node=~\"$node\"}",
+          "instant": true,
+          "legendFormat": "{{node}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "System load — 1 minute",
+      "description": "Average number of runnable tasks or tasks in uninterruptible sleep, commonly waiting for I/O. Interpret relative to the number of logical CPUs.",
+      "type": "timeseries",
+      "datasource": null,
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_load1{job=\"node-exporter\",node=~\"$node\"}",
+          "legendFormat": "{{node}}"
+        }
+      ]
+    },
+    {
+  "id": 5,
+  "title": "Container CPU usage",
+  "description": "CPU cores consumed by each container, averaged over one minute. A value of 1 means one logical CPU is fully occupied; 0.5 means half a CPU.",
+  "type": "timeseries",
+  "datasource": null,
+  "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "short",
+      "min": 0,
+      "decimals": 3
+    },
+    "overrides": []
+  },
+  "options": {
+    "legend": {
+      "displayMode": "list",
+      "placement": "bottom"
+    },
+    "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+    }
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "sum by (instance, id) (rate(container_cpu_usage_seconds_total{job=\"cadvisor\",id=~\"/docker/[0-9a-f]+\"}[1m]))",
+      "legendFormat": "{{id}}"
+    }
+  ]
+},
+{
+  "id": 6,
+  "title": "Container memory usage",
+  "description": "Memory working set for each container.",
+  "type": "timeseries",
+  "datasource": null,
+  "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "bytes",
+      "min": 0,
+      "decimals": 1
+    },
+    "overrides": []
+  },
+  "options": {
+    "legend": {
+      "displayMode": "list",
+      "placement": "bottom"
+    },
+    "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+    }
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "container_memory_working_set_bytes{job=\"cadvisor\",id=~\"/docker/[0-9a-f]+\"}",
+      "legendFormat": "{{id}}"
+    }
+  ]
+},{
+  "id": 7,
+  "title": "Service checks",
+  "type": "row",
+  "collapsed": false,
+  "gridPos": {
+    "x": 0,
+    "y": 22,
+    "w": 24,
+    "h": 1
+  },
+  "panels": []
+},
+{
+  "id": 8,
+  "title": "Core API",
+  "description": "Checks that the Core API returns HTTP 200. Passing: the check succeeded. Failing: the check failed. Unknown: no usable check result was collected.",
+  "type": "stat",
+  "datasource": null,
+  "gridPos": {
+    "x": 0,
+    "y": 23,
+    "w": 6,
+    "h": 4
+  },
+  "fieldConfig": {
+    "defaults": {
+      "mappings": [
+        {
+          "type": "value",
+          "options": {
+            "-1": {
+              "text": "Unknown",
+              "color": "gray"
+            },
+            "0": {
+              "text": "Failing",
+              "color": "red"
+            },
+            "1": {
+              "text": "Passing",
+              "color": "green"
+            }
+          }
+        }
+      ],
+      "noValue": "Unknown"
+    },
+    "overrides": []
+  },
+  "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "orientation": "auto",
+    "justifyMode": "center",
+    "wideLayout": false,
+    "text": {
+      "valueSize": 20
+    },
+    "reduceOptions": {
+      "calcs": [
+        "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+    }
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "(probe_success{job=\"service-health\",service=\"Core API\"} and on(job, instance) (up{job=\"service-health\",service=\"Core API\"} == 1)) or on(job, instance) (up{job=\"service-health\",service=\"Core API\"} * 0 - 1)",
+      "instant": true,
+      "range": false,
+      "legendFormat": "Core API"
+    }
+  ]
+},
+{
+  "id": 9,
+  "title": "Database",
+  "description": "Checks PostgreSQL connectivity through the Core API health endpoint; this is not a direct database probe. Passing: the check succeeded. Failing: the check failed. Unknown: no usable check result was collected.",
+  "type": "stat",
+  "datasource": null,
+  "gridPos": {
+    "x": 6,
+    "y": 23,
+    "w": 6,
+    "h": 4
+  },
+  "fieldConfig": {
+    "defaults": {
+      "mappings": [
+        {
+          "type": "value",
+          "options": {
+            "-1": {
+              "text": "Unknown",
+              "color": "gray"
+            },
+            "0": {
+              "text": "Failing",
+              "color": "red"
+            },
+            "1": {
+              "text": "Passing",
+              "color": "green"
+            }
+          }
+        }
+      ],
+      "noValue": "Unknown"
+    },
+    "overrides": []
+  },
+  "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "orientation": "auto",
+    "justifyMode": "center",
+    "wideLayout": false,
+    "text": {
+      "valueSize": 20
+    },
+    "reduceOptions": {
+      "calcs": [
+        "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+    }
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "(probe_success{job=\"service-health\",service=\"API database check\"} and on(job, instance) (up{job=\"service-health\",service=\"API database check\"} == 1)) or on(job, instance) (up{job=\"service-health\",service=\"API database check\"} * 0 - 1)",
+      "instant": true,
+      "range": false,
+      "legendFormat": "Database"
+    }
+  ]
+},
+{
+  "id": 10,
+  "title": "Website",
+  "description": "Checks that the Apache website returns HTTP 200. Passing: the check succeeded. Failing: the check failed. Unknown: no usable check result was collected.",
+  "type": "stat",
+  "datasource": null,
+  "gridPos": {
+    "x": 12,
+    "y": 23,
+    "w": 6,
+    "h": 4
+  },
+  "fieldConfig": {
+    "defaults": {
+      "mappings": [
+        {
+          "type": "value",
+          "options": {
+            "-1": {
+              "text": "Unknown",
+              "color": "gray"
+            },
+            "0": {
+              "text": "Failing",
+              "color": "red"
+            },
+            "1": {
+              "text": "Passing",
+              "color": "green"
+            }
+          }
+        }
+      ],
+      "noValue": "Unknown"
+    },
+    "overrides": []
+  },
+  "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "orientation": "auto",
+    "justifyMode": "center",
+    "wideLayout": false,
+    "text": {
+      "valueSize": 20
+    },
+    "reduceOptions": {
+      "calcs": [
+        "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+    }
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "(probe_success{job=\"service-health\",service=\"Static website\"} and on(job, instance) (up{job=\"service-health\",service=\"Static website\"} == 1)) or on(job, instance) (up{job=\"service-health\",service=\"Static website\"} * 0 - 1)",
+      "instant": true,
+      "range": false,
+      "legendFormat": "Website"
+    }
+  ]
+},
+{
+  "id": 11,
+  "title": "Redis",
+  "description": "Checks that Redis responds to PING with PONG. Passing: the check succeeded. Failing: the check failed. Unknown: no usable check result was collected.",
+  "type": "stat",
+  "datasource": null,
+  "gridPos": {
+    "x": 18,
+    "y": 23,
+    "w": 6,
+    "h": 4
+  },
+  "fieldConfig": {
+    "defaults": {
+      "mappings": [
+        {
+          "type": "value",
+          "options": {
+            "-1": {
+              "text": "Unknown",
+              "color": "gray"
+            },
+            "0": {
+              "text": "Failing",
+              "color": "red"
+            },
+            "1": {
+              "text": "Passing",
+              "color": "green"
+            }
+          }
+        }
+      ],
+      "noValue": "Unknown"
+    },
+    "overrides": []
+  },
+  "options": {
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "orientation": "auto",
+    "justifyMode": "center",
+    "wideLayout": false,
+    "text": {
+      "valueSize": 20
+    },
+    "reduceOptions": {
+      "calcs": [
+        "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+    }
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "(probe_success{job=\"service-health\",service=\"Redis\"} and on(job, instance) (up{job=\"service-health\",service=\"Redis\"} == 1)) or on(job, instance) (up{job=\"service-health\",service=\"Redis\"} * 0 - 1)",
+      "instant": true,
+      "range": false,
+      "legendFormat": "Redis"
+    }
+  ]
+}
+  ]
+}
