@@ -7,7 +7,7 @@
 
 services:
   nginx:
-    image: 10.0.0.4:5000/basic-nginx:1
+    image: 10.0.0.4:5000/basic-nginx:2
     environment:
       DOMAIN: balkan-ccds.duckdns.org
       CERT_NAME: balkan-ccds
