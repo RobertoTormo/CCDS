@@ -1,0 +1,181 @@
+# Stack "atenea" — production (Docker Swarm): Moodle LMS + its database
+#
+#   moodle       : web (Apache+PHP), scalable, cron disabled          -> N replicas
+#   moodle-cron  : Moodle scheduled tasks, same image, command "cron"  -> 1 replica (CronJob)
+#   moodle-redis : PHP sessions + Moodle cache shared by the replicas  -> 1 replica (volatile)
+#   balkandb     : MariaDB, pinned to balkan1 (DBMS does not scale)     -> 1 replica
+#   backup       : daily DB dump + moodledata archive to NFS            -> 1 replica (CronJob)
+#
+# Public URL: https://moodle.balkan-ccds.duckdns.org  (TLS ends at basic_nginx)
+#
+# Before the first deploy (once): create the secret files, see atenea/secrets/README.md
+# First deploy (only one web replica while Moodle installs itself into the empty DB):
+#   MOODLE_REPLICAS=1 MOODLE_CRON_REPLICAS=0 docker stack deploy -c atenea/production.yml atenea
+# Every later deploy:
+#   docker stack deploy -c atenea/production.yml atenea
+
+x-moodle-env: &moodle-env
+  MOODLE_URL: "https://moodle.balkan-ccds.duckdns.org"
+  MOODLE_SSL_PROXY: "auto"
+  MOODLE_DB_TYPE: mariadb
+  MOODLE_DB_HOST: balkandb
+  MOODLE_DB_PORT: "3306"
+  MOODLE_DB_NAME: balkandb
+  MOODLE_DB_USER: moodle
+  MOODLE_DB_PASSWORD_FILE: /run/secrets/balkandb_password
+  MOODLE_ADMIN_PASSWORD_FILE: /run/secrets/moodle_admin_password
+  MOODLE_REDIS_HOST: moodle-redis
+  MOODLE_REDIS_PORT: "6379"
+  MOODLE_TIMEZONE: Europe/Madrid
+  MOODLE_SITE_NAME: "Atenea"
+
+services:
+  moodle:
+    image: oksigenia/moodle:5.3.0-r16
+    environment:
+      <<: *moodle-env
+      MOODLE_CRON: "off"
+    secrets:
+      - balkandb_password
+      - moodle_admin_password
+    volumes:
+      - moodle_files:/var/www/moodledata
+    networks:
+      frontend:
+        aliases: [atenea-moodle]
+      backend:
+    deploy:
+      replicas: ${MOODLE_REPLICAS:-2}
+      update_config:
+        parallelism: 1
+        delay: 30s
+      restart_policy:
+        condition: any
+
+  moodle-cron:
+    image: oksigenia/moodle:5.3.0-r16
+    command: cron
+    environment:
+      <<: *moodle-env
+    secrets:
+      - balkandb_password
+      - moodle_admin_password
+    volumes:
+      - moodle_files:/var/www/moodledata
+    networks:
+      - backend
+    deploy:
+      replicas: ${MOODLE_CRON_REPLICAS:-1}
+      restart_policy:
+        condition: any
+
+  moodle-redis:
+    image: redis:7-alpine
+    # Pure cache: no snapshots, no AOF (shared volatile data, nothing to back up)
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+
+  balkandb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: balkandb
+      MARIADB_USER: moodle
+      MARIADB_PASSWORD_FILE: /run/secrets/balkandb_password
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/balkandb_root_password
+    secrets:
+      - balkandb_password
+      - balkandb_root_password
+    volumes:
+      - balkandb_data:/var/lib/mysql
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      replicas: 1
+      # Local volume on balkan1 (same strategy as the core app's PostgreSQL):
+      # DB files are not put on NFS (locking/corruption risk); DR comes from dumps.
+      placement:
+        constraints:
+          - node.hostname == balkan1
+      restart_policy:
+        condition: any
+
+  backup:
+    image: mariadb:11.4
+    environment:
+      KEEP_DAYS: "7"
+    secrets:
+      - balkandb_root_password
+    volumes:
+      - atenea_backups:/backups
+      - moodle_files:/moodledata:ro
+    networks:
+      - backend
+    entrypoint: ["/bin/sh", "-c"]
+    # Every 24h: consistent SQL dump of balkandb (--single-transaction, no locks)
+    # + archive of moodledata without caches; keeps the last KEEP_DAYS days.
+    # $$ = literal $ (escaped from Compose interpolation).
+    command:
+      - |
+        sleep 120
+        while true; do
+          TS=$$(date +%Y%m%d_%H%M%S)
+          if mariadb-dump -h balkandb -uroot -p"$$(cat /run/secrets/balkandb_root_password)" \
+               --single-transaction --routines --triggers balkandb | gzip > /backups/balkandb_$$TS.sql.gz; then
+            echo "DB dump OK: balkandb_$$TS.sql.gz"
+          else
+            echo "DB dump FAILED"; rm -f /backups/balkandb_$$TS.sql.gz
+          fi
+          tar -czf /backups/moodledata_$$TS.tar.gz -C /moodledata \
+              --exclude=./cache --exclude=./localcache --exclude=./temp --exclude=./sessions . \
+            && echo "moodledata archive OK: moodledata_$$TS.tar.gz"
+          find /backups -name 'balkandb_*.sql.gz' -mtime +$$KEEP_DAYS -delete
+          find /backups -name 'moodledata_*.tar.gz' -mtime +$$KEEP_DAYS -delete
+          sleep 24h
+        done
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+
+networks:
+  # Shared with the nginx frontend (stack basic). Only "moodle" joins it.
+  frontend:
+    external: true
+  # Private network of the stack (atenea_backend): DB and Redis live only here.
+  backend:
+    driver: overlay
+
+secrets:
+  # Files are NOT in git (atenea/secrets/ is git-ignored); see secrets/README.md
+  balkandb_password:
+    file: ./secrets/balkandb_password.txt
+  balkandb_root_password:
+    file: ./secrets/balkandb_root_password.txt
+  moodle_admin_password:
+    file: ./secrets/moodle_admin_password.txt
+
+volumes:
+  # Shared by all moodle replicas + cron on any node -> NFS (server balkan1)
+  moodle_files:
+    driver_opts:
+      type: "nfs"
+      o: "addr=10.0.0.4,nolock,soft,rw"
+      device: ":/srv/nfs/shared/atenea/moodledata"
+  # Backups on NFS, outside the DB node's Docker storage
+  atenea_backups:
+    driver_opts:
+      type: "nfs"
+      o: "addr=10.0.0.4,nolock,soft,rw"
+      device: ":/srv/nfs/shared/atenea/backups"
+  # Local to balkan1 (placement constraint above)
+  balkandb_data:
