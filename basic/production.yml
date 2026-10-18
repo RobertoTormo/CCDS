@@ -1,0 +1,80 @@
+# Stack "basic" — production (Docker Swarm)
+#   nginx   : frontend reverse proxy, the ONLY service publishing ports (80/443)
+#   certbot : obtains and renews the Let's Encrypt certificate (CronJob-like, 1 replica)
+#
+# Deploy (from the repo root, on a manager node):
+#   docker stack deploy -c basic/production.yml basic
+
+services:
+  nginx:
+    image: 10.0.0.4:5000/basic-nginx:1
+    environment:
+      DOMAIN: balkan-ccds.duckdns.org
+      CERT_NAME: balkan-ccds
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    networks:
+      - frontend
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: any
+
+  certbot:
+    image: certbot/certbot:v5.8.0
+    environment:
+      DOMAIN: balkan-ccds.duckdns.org
+      CERT_NAME: balkan-ccds
+    entrypoint: ["/bin/sh", "-c"]
+    # Issues the certificate the first time, then every 12h renews it only
+    # if it expires within 30 days (--keep-until-expiring).
+    # $$ = literal $ (escaped from Compose interpolation).
+    command:
+      - |
+        sleep 30
+        while true; do
+          if certbot certonly --webroot -w /var/www/certbot \
+               --cert-name "$$CERT_NAME" \
+               -d "$$DOMAIN" -d "app.$$DOMAIN" -d "moodle.$$DOMAIN" -d "grafana.$$DOMAIN" \
+               --keep-until-expiring --expand \
+               --agree-tos --register-unsafely-without-email --non-interactive; then
+            sleep 12h
+          else
+            echo "certbot failed, retrying in 30 minutes"
+            sleep 30m
+          fi
+        done
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+
+networks:
+  # Shared overlay network between stacks (already exists on the Swarm,
+  # the core app is attached to it with alias "core").
+  frontend:
+    external: true
+
+volumes:
+  # On NFS (server balkan1) so every nginx replica, on any node, sees the
+  # same certificate and challenge files written by certbot.
+  letsencrypt:
+    driver_opts:
+      type: "nfs"
+      o: "addr=10.0.0.4,nolock,soft,rw"
+      device: ":/srv/nfs/shared/letsencrypt"
+  certbot_www:
+    driver_opts:
+      type: "nfs"
+      o: "addr=10.0.0.4,nolock,soft,rw"
+      device: ":/srv/nfs/shared/certbot-www"

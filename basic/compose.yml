@@ -1,0 +1,21 @@
+# Stack "basic" — local development (Docker Compose)
+# nginx only, with a temporary self-signed certificate:
+# no Let's Encrypt, no NFS, ports only on localhost (range 80xx).
+#   docker compose -f basic/compose.yml up -d --build
+#   http://localhost:8080  ->  redirect to https://localhost:8443
+
+services:
+  nginx:
+    build: ./nginx
+    environment:
+      DOMAIN: localhost
+      CERT_NAME: none
+    ports:
+      - "127.0.0.1:8080:80"
+      - "127.0.0.1:8443:443"
+    networks:
+      - frontend
+
+networks:
+  frontend:
+    name: frontend
