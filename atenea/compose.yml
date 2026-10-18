@@ -1,0 +1,51 @@
+services:
+  moodle:
+    image: oksigenia/moodle:5.3
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MOODLE_URL: "http://localhost:8300"
+      MOODLE_DB_TYPE: mariadb
+      MOODLE_DB_HOST: balkandb
+      MOODLE_DB_PORT: "3306"
+      MOODLE_DB_NAME: balkandb
+      MOODLE_DB_USER: moodle
+      MOODLE_DATA_ROOT: /var/www/moodledata
+    ports:
+      - "127.0.0.1:8300:8080"
+    volumes:
+      - moodle_files:/var/www/moodledata
+    networks:
+      - atenea_backend
+    depends_on:
+      balkandb:
+        condition: service_healthy
+
+  balkandb:
+    image: mariadb:11.4
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MARIADB_DATABASE: balkandb
+      MARIADB_USER: moodle
+    volumes:
+      - balkandb_data:/var/lib/mysql
+    networks:
+      - atenea_backend
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  atenea_backend:
+    name: atenea_backend
+
+volumes:
+  moodle_files:
+    name: moodle_files
+  balkandb_data:
+    name: balkandb_data
