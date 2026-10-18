@@ -3,7 +3,7 @@ version: "3.8" #Compose version 3 file format
 services:
   node-exporter:
     
-    image: prom/node-exporter:v1.10.2
+    image: 10.0.0.4:5000/node-exporter:v1.10.2
 
     command:
       # Read kernel metrics from the mounted host /proc
@@ -37,7 +37,7 @@ services:
         condition: any
 
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: 10.0.0.4:5000/prometheus:v3.15.0
 
     # Allow access to the manager's Docker socket
     user: "0:0"
@@ -67,7 +67,7 @@ services:
         condition: any
 
   grafana:
-    image: grafana/grafana:13.2.4
+    image: 10.0.0.4:5000/grafana:13.2.4
 
     environment:
       # Pass the reader credentials and database name into Grafana
@@ -147,7 +147,7 @@ services:
 
   blackbox:
 
-    image: prom/blackbox-exporter:v0.29.0
+    image: 10.0.0.4:5000/blackbox-exporter:v0.29.0
     command:
       # Load our check definitions
       - '--config.file=/etc/blackbox/blackbox.yaml'
@@ -173,7 +173,7 @@ services:
       - app_backend
 
   cadvisor:
-    image: ghcr.io/google/cadvisor:0.60.6
+    image: 10.0.0.4:5000/cadvisor:0.60.6
 
     command:
       - '--docker_only=true'
