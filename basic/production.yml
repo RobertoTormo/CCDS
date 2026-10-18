@@ -1,6 +1,7 @@
 # Stack "basic" — production (Docker Swarm)
 #   nginx   : frontend reverse proxy, the ONLY service publishing ports (80/443)
 #   certbot : obtains and renews the Let's Encrypt certificate (CronJob-like, 1 replica)
+#   smtp    : internal mail relay (Postfix) forwarding to the mail provider (Gmail)
 #
 # Deploy (from the repo root, on a manager node):
 #   docker stack deploy -c basic/production.yml basic
@@ -56,6 +57,30 @@ services:
       - certbot_www:/var/www/certbot
     deploy:
       replicas: 1
+      restart_policy:
+        condition: any
+
+  smtp:
+    image: boky/postfix:5.1.0-alpine
+    # Relay credentials (Gmail address + app password) are NOT in git:
+    # they live in basic/smtp.env, git-ignored (see smtp.env.example).
+    env_file:
+      - smtp.env
+    environment:
+      RELAYHOST: "[smtp.gmail.com]:587"
+      # Senders our services use (Moodle, core app); anything else is refused.
+      ALLOWED_SENDER_DOMAINS: "balkan-ccds.duckdns.org moodle.balkan-ccds.duckdns.org gmail.com"
+      # Accept mail only from private networks (the Docker overlay networks).
+      MYNETWORKS: "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
+    # No published ports: reachable only inside the cluster as "smtp:587"
+    # on the shared network frontend (alias below).
+    networks:
+      frontend:
+        aliases: [basic-smtp]
+    deploy:
+      # Stateless relay: the queue is volatile (mail is handed to Gmail within
+      # seconds), so it can scale like any other stateless service.
+      replicas: 2
       restart_policy:
         condition: any
 
