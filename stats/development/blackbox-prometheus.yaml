@@ -8,6 +8,16 @@ modules:
       valid_status_codes: [200]
       follow_redirects: false
 
+  atenea_http:
+    # Check Atenea's public endpoint
+    prober: http
+    timeout: 5s
+    http:
+      preferred_ip_protocol: ip4
+      valid_status_codes: [200]
+      # Follow Moodle's redirects
+      follow_redirects: true
+
   redis_ping:
     # Require a Redis response, not just an open port.
     prober: tcp

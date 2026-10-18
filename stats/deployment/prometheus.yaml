@@ -52,11 +52,12 @@ scrape_configs:
           service: API database check
           module: http_200
 
-      # Check whether Apache serves the static website.
-    #  - targets: ['http://static:80/']
-     #   labels:
-      #    service: Static website
-     #     module: http_200
+      # Check the public Atenea instance through nginx and TLS
+      - targets: ['https://moodle.balkan-ccds.duckdns.org/']
+        labels:
+          # Match the service label used by the Grafana status card
+          service: Atenea
+          module: atenea_http
 
       # Send PING to Redis and require PONG.
       - targets: ['coreprod_redis:6379']

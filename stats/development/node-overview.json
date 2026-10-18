@@ -372,8 +372,8 @@
 },
 {
   "id": 10,
-  "title": "Website",
-  "description": "Checks that the Apache website returns HTTP 200. Passing: the check succeeded. Failing: the check failed. Unknown: no usable check result was collected.",
+  "title": "Atenea",
+  "description": "Checks Atenea's public availability",
   "type": "stat",
   "datasource": null,
   "gridPos": {
@@ -428,10 +428,10 @@
   "targets": [
     {
       "refId": "A",
-      "expr": "(probe_success{job=\"service-health\",service=\"Static website\"} and on(job, instance) (up{job=\"service-health\",service=\"Static website\"} == 1)) or on(job, instance) (up{job=\"service-health\",service=\"Static website\"} * 0 - 1)",
+      "expr": "(probe_success{job=\"service-health\",service=\"Atenea\"} and on(job, instance) (up{job=\"service-health\",service=\"Atenea\"} == 1)) or on(job, instance) (up{job=\"service-health\",service=\"Atenea\"} * 0 - 1)",
       "instant": true,
       "range": false,
-      "legendFormat": "Website"
+      "legendFormat": "Atenea"
     }
   ]
 },
