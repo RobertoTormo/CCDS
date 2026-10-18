@@ -45,21 +45,15 @@
     {
       "name": "container",
       "label": "Container",
-      "description": "Discover Swarm container tasks on the selected nodes.",
+      "description": "Discover containers on the selected nodes",
       "type": "query",
       "datasource": null,
       "query": {
-        "qryType": 1,
-        "label": "container_label_com_docker_swarm_task_name",
-        "metric": "container_memory_working_set_bytes",
-        "labelFilters": [
-          {"key": "job", "operator": "=", "value": "cadvisor"},
-          {"key": "node", "operator": "=~", "value": "$node"},
-          {"key": "container_label_com_docker_swarm_task_name", "operator": "!=", "value": ""}
-        ],
-        "query": "label_values(container_memory_working_set_bytes{job=\"cadvisor\",node=~\"$node\",container_label_com_docker_swarm_task_name!=\"\"}, container_label_com_docker_swarm_task_name)",
+        "qryType": 3,
+        "query": "query_result(label_join(label_replace(label_replace(count by (node, container_label_com_docker_swarm_task_name) (container_memory_working_set_bytes{job=\"cadvisor\",node=~\"$node\",container_label_com_docker_swarm_task_name!=\"\"}), \"container_display\", \"$1\", \"container_label_com_docker_swarm_task_name\", \"(.+)\\\\.[^.]+\\\\.[^.]+\"), \"container_display\", \"$1 · replica $2\", \"container_label_com_docker_swarm_task_name\", \"(.+)\\\\.([0-9]+)\\\\.[^.]+\"), \"container_display\", \" · \", \"container_display\", \"node\"))",
         "refId": "ContainerVariable"
       },
+      "regex": "/container_display=\"(?<text>[^\"]+)\"|container_label_com_docker_swarm_task_name=\"(?<value>[^\"]+)\"/g",
       "refresh": 2,
       "sort": 1,
       "multi": true,
@@ -192,8 +186,8 @@
     },
     {
       "id": 12,
-      "title": "Container: $container",
-      "description": "",
+      "title": "Container: ${container:text}",
+      "description": "Repeat CPU and memory graphs for each selected task.",
       "type": "row",
       "collapsed": false,
       "repeat": "container",
@@ -229,7 +223,7 @@
     {
       "refId": "A",
       "expr": "sum by (node, container_label_com_docker_swarm_task_name) (rate(container_cpu_usage_seconds_total{job=\"cadvisor\",node=~\"$node\",container_label_com_docker_swarm_task_name=~\"$container\",container_label_com_docker_swarm_task_name!=\"\"}[$__rate_interval]))",
-      "legendFormat": "{{container_label_com_docker_swarm_task_name}} · {{node}}"
+      "legendFormat": "{{node}}"
     }
   ]
 },
@@ -262,7 +256,7 @@
     {
       "refId": "A",
       "expr": "container_memory_working_set_bytes{job=\"cadvisor\",node=~\"$node\",container_label_com_docker_swarm_task_name=~\"$container\",container_label_com_docker_swarm_task_name!=\"\"}",
-      "legendFormat": "{{container_label_com_docker_swarm_task_name}} · {{node}}"
+      "legendFormat": "{{node}}"
     }
   ]
 },{
