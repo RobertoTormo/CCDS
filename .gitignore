@@ -5,7 +5,6 @@
 *.key
 *.pem
 *.crt
-secrets/
 
 # Local data from bind mounts during development
 data/
@@ -15,3 +14,4 @@ backups/
 .DS_Store
 .vscode/
 .idea/
+!basic/smtp.env

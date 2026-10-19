@@ -1,2 +1,1 @@
-# Real SMTP relay credentials (only the .example is versioned)
-smtp.env
+# smtp.env is committed on purpose (use a throwaway Gmail app password).

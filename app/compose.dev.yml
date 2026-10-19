@@ -14,12 +14,18 @@ services:
     restart: unless-stopped
 
   static:
+    build: ./static
     image: httpd:2.4
     ports:
       - "8081:80"
-    volumes:
-      - ./static/html:/usr/local/apache2/htdocs:ro
     restart: unless-stopped
+
+  auto:
+    build: ./auto
+    environment:
+      CORE_URL: http://core:5000
+    depends_on:
+      - core
 
   backup:
     image: postgres:17
