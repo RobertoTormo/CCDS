@@ -1,19 +1,3 @@
-# Stack "atenea" — production (Docker Swarm): Moodle LMS + its database
-#
-#   moodle       : web (Apache+PHP), scalable, cron disabled          -> N replicas
-#   moodle-cron  : Moodle scheduled tasks, same image, command "cron"  -> 1 replica (CronJob)
-#   moodle-redis : PHP sessions + Moodle cache shared by the replicas  -> 1 replica (volatile)
-#   balkandb     : MariaDB, pinned to balkan1 (DBMS does not scale)     -> 1 replica
-#   backup       : daily DB dump + moodledata archive to NFS            -> 1 replica (CronJob)
-#
-# Public URL: https://moodle.balkan-ccds.duckdns.org  (TLS ends at basic_nginx)
-#
-# Before the first deploy (once): create the secret files, see atenea/secrets/README.md
-# First deploy (only one web replica while Moodle installs itself into the empty DB):
-#   MOODLE_REPLICAS=1 MOODLE_CRON_REPLICAS=0 docker stack deploy -c atenea/production.yml atenea
-# Every later deploy:
-#   docker stack deploy -c atenea/production.yml atenea
-
 x-moodle-env: &moodle-env
   MOODLE_URL: "https://moodle.balkan-ccds.duckdns.org"
   MOODLE_SSL_PROXY: "auto"
@@ -28,7 +12,7 @@ x-moodle-env: &moodle-env
   MOODLE_REDIS_PORT: "6379"
   MOODLE_TIMEZONE: Europe/Madrid
   MOODLE_SITE_NAME: "Atenea"
-
+ 
 services:
   moodle:
     image: oksigenia/moodle:5.3.0-r16
@@ -51,7 +35,7 @@ services:
         delay: 30s
       restart_policy:
         condition: any
-
+ 
   moodle-cron:
     image: oksigenia/moodle:5.3.0-r16
     command: cron
@@ -68,7 +52,7 @@ services:
       replicas: ${MOODLE_CRON_REPLICAS:-1}
       restart_policy:
         condition: any
-
+ 
   moodle-redis:
     image: redis:7-alpine
     # Pure cache: no snapshots, no AOF (shared volatile data, nothing to back up)
@@ -79,7 +63,7 @@ services:
       replicas: 1
       restart_policy:
         condition: any
-
+ 
   balkandb:
     image: mariadb:11.4
     environment:
@@ -101,14 +85,14 @@ services:
       retries: 10
     deploy:
       replicas: 1
-      # Local volume on balkan1 (same strategy as the core app's PostgreSQL):
-      # DB files are not put on NFS (locking/corruption risk); DR comes from dumps.
+      # Local volume on balkan1: DB files are not put on NFS (locking and
+      # corruption risk); disaster recovery comes from the dumps.
       placement:
         constraints:
           - node.hostname == balkan1
       restart_policy:
         condition: any
-
+ 
   backup:
     image: mariadb:11.4
     environment:
@@ -146,24 +130,26 @@ services:
       replicas: 1
       restart_policy:
         condition: any
-
+ 
 networks:
-  # Shared with the nginx frontend (stack basic). Only "moodle" joins it.
+  # Shared with the nginx frontend. Created by stack "basic", reused here.
+  # Only "moodle" joins it.
   frontend:
     external: true
+    name: frontend
   # Private network of the stack (atenea_backend): DB and Redis live only here.
   backend:
     driver: overlay
-
+ 
 secrets:
-  # Files are NOT in git (atenea/secrets/ is git-ignored); see secrets/README.md
+  # Demo values committed on purpose so that deploying needs no extra step.
   balkandb_password:
     file: ./secrets/balkandb_password.txt
   balkandb_root_password:
     file: ./secrets/balkandb_root_password.txt
   moodle_admin_password:
     file: ./secrets/moodle_admin_password.txt
-
+ 
 volumes:
   # Shared by all moodle replicas + cron on any node -> NFS (server balkan1)
   moodle_files:

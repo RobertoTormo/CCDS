@@ -1,14 +1,46 @@
-# Stack "basic" — production (Docker Swarm)
-#   nginx   : frontend reverse proxy, the ONLY service publishing ports (80/443)
-#   certbot : obtains and renews the Let's Encrypt certificate (CronJob-like, 1 replica)
-#   smtp    : internal mail relay (Postfix) forwarding to the mail provider (Gmail)
-#
-# Deploy (from the repo root, on a manager node):
-#   docker stack deploy -c basic/production.yml basic
-
 services:
+  nfs-init:
+    image: busybox:1.37
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        cd /nfs
+        mkdir -p letsencrypt certbot-www registry app-backups atenea/moodledata atenea/backups
+        chmod 0777 letsencrypt certbot-www registry app-backups atenea atenea/moodledata atenea/backups
+        echo "NFS folders ready"
+    volumes:
+      - nfs_root:/nfs
+    deploy:
+      replicas: 1
+      restart_policy:
+        # Retry until the NFS server answers; a successful run is not restarted.
+        condition: on-failure
+        delay: 5s
+ 
+  registry:
+    image: registry:2
+    ports:
+      # Host mode: one replica per node, the cluster uses the one on balkan1 (10.0.0.4:5000).
+      - target: 5000
+        published: 5000
+        protocol: tcp
+        mode: host
+    volumes:
+      - registry_data:/var/lib/registry
+    deploy:
+      replicas: 3
+      placement:
+        max_replicas_per_node: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: any
+ 
   nginx:
-    image: 10.0.0.4:5000/basic-nginx:2
+    image: 10.0.0.4:5000/basic-nginx:3
     environment:
       DOMAIN: balkan-ccds.duckdns.org
       CERT_NAME: balkan-ccds
@@ -27,7 +59,7 @@ services:
         delay: 10s
       restart_policy:
         condition: any
-
+ 
   certbot:
     image: certbot/certbot:v5.8.0
     environment:
@@ -59,40 +91,46 @@ services:
       replicas: 1
       restart_policy:
         condition: any
-
+ 
   smtp:
     image: boky/postfix:5.1.0-alpine
-    # Relay credentials (Gmail address + app password) are NOT in git:
-    # they live in basic/smtp.env, git-ignored (see smtp.env.example).
+    # Gmail address + app password live in basic/smtp.env (committed for the
+    # lab, use a throwaway app password and revoke it after the evaluation).
     env_file:
       - smtp.env
     environment:
       RELAYHOST: "[smtp.gmail.com]:587"
-      # Senders our services use (Moodle, core app); anything else is refused.
       ALLOWED_SENDER_DOMAINS: "balkan-ccds.duckdns.org moodle.balkan-ccds.duckdns.org gmail.com"
-      # Accept mail only from private networks (the Docker overlay networks).
       MYNETWORKS: "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
-    # No published ports: reachable only inside the cluster as "smtp:587"
-    # on the shared network frontend (alias below).
+    # No published ports: reachable only inside the cluster as "basic-smtp:587".
     networks:
       frontend:
         aliases: [basic-smtp]
     deploy:
-      # Stateless relay: the queue is volatile (mail is handed to Gmail within
-      # seconds), so it can scale like any other stateless service.
+      # Stateless relay: the queue is volatile, so it scales like any other service.
       replicas: 2
       restart_policy:
         condition: any
-
+ 
 networks:
-  # Shared overlay network between stacks (already exists on the Swarm,
-  # the core app is attached to it with alias "core").
+  # Shared overlay network between stacks. Created by this stack; the other
+  # stacks declare it with the same name and reuse it.
   frontend:
-    external: true
-
+    name: frontend
+    driver: overlay
+    attachable: true
+ 
 volumes:
-  # On NFS (server balkan1) so every nginx replica, on any node, sees the
-  # same certificate and challenge files written by certbot.
+  nfs_root:
+    driver_opts:
+      type: "nfs"
+      o: "addr=10.0.0.4,nolock,soft,rw"
+      device: ":/srv/nfs/shared"
+  registry_data:
+    driver_opts:
+      type: "nfs"
+      o: "addr=10.0.0.4,nolock,soft,rw"
+      device: ":/srv/nfs/shared/registry"
   letsencrypt:
     driver_opts:
       type: "nfs"
@@ -103,3 +141,4 @@ volumes:
       type: "nfs"
       o: "addr=10.0.0.4,nolock,soft,rw"
       device: ":/srv/nfs/shared/certbot-www"
+ 

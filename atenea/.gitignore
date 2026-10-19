@@ -1,3 +1,1 @@
-# Secret files of the stack (only the README is versioned)
-secrets/*
-!secrets/README.md
+# Secret files are committed on purpose (lab demo values).

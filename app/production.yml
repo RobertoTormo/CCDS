@@ -1,12 +1,11 @@
-
 version: "3.8"
-
+ 
 services:
   core:
     image: 10.0.0.4:5000/core-app:1.2
     environment:
-      POSTGRES_USER: "${POSTGRES_USER}"
-      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_USER: "${POSTGRES_USER:-coreuser}"
+      POSTGRES_DB: "${POSTGRES_DB:-coredb}"
       DB_PASSWORD_FILE: /run/secrets/db_password
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
@@ -14,26 +13,51 @@ services:
     secrets:
       - db_password
     networks:
-      - frontend
+      frontend:
+        aliases: [core]
+      backend:
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        order: start-first
+      restart_policy:
+        condition: on-failure
+ 
+  static:
+    # Apache serving the static files. The HTML is baked into the image
+    # (app/static/Dockerfile), so it runs on any node and can scale.
+    image: 10.0.0.4:5000/app-static:1
+    networks:
+      frontend:
+        aliases: [app-static]
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        order: start-first
+      restart_policy:
+        condition: any
+ 
+  auto:
+    # Automatic feeder: periodically posts page ratings to the core API.
+    image: 10.0.0.4:5000/app-auto:1
+    environment:
+      CORE_URL: http://core:5000
+      INTERVAL: "60"
+    networks:
       - backend
+      - frontend
     deploy:
       replicas: 2
       restart_policy:
-        condition: on-failure
-      labels:
-        - "traefik.enable=true"
-        - "traefik.docker.network=frontend"
-        - "traefik.http.routers.core.rule=PathPrefix(`/api`)"
-        - "traefik.http.routers.core.entrypoints=web"
-        - "traefik.http.routers.core.middlewares=core-strip"
-        - "traefik.http.middlewares.core-strip.stripprefix.prefixes=/api"
-        - "traefik.http.services.core.loadbalancer.server.port=5000"
-
+        condition: any
+ 
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_DB: "${POSTGRES_DB}"
-      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_DB: "${POSTGRES_DB:-coredb}"
+      POSTGRES_USER: "${POSTGRES_USER:-coreuser}"
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     secrets:
       - db_password
@@ -48,7 +72,7 @@ services:
           - node.hostname == balkan1
       restart_policy:
         condition: on-failure
-
+ 
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -63,17 +87,17 @@ services:
           - node.hostname == balkan1
       restart_policy:
         condition: on-failure
-
+ 
   backup:
     image: postgres:17
     environment:
-      POSTGRES_USER: "${POSTGRES_USER}"
-      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_USER: "${POSTGRES_USER:-coreuser}"
+      POSTGRES_DB: "${POSTGRES_DB:-coredb}"
       BACKUP_DIR: /backups
     secrets:
       - db_password
     volumes:
-      - nfsvolume:/backups
+      - app_backups:/backups
     networks:
       - backend
     command:
@@ -101,42 +125,27 @@ services:
         done
     deploy:
       replicas: 1
-      placement:
-        constraints:
-          - node.hostname == balkan1
       restart_policy:
         condition: on-failure
-
+ 
   grafana-db-setup:
-
+    # One-shot job: creates the read-only account used by Grafana.
     image: postgres:17
-
     environment:
-      # Administrator identity used to create the reader account
-      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
-      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
-
-
-      GRAFANA_DB_USER: ${GRAFANA_DB_USER:?Set GRAFANA_DB_USER}
-
-      # Password values come from secret files
+      POSTGRES_USER: "${POSTGRES_USER:-coreuser}"
+      POSTGRES_DB: "${POSTGRES_DB:-coredb}"
+      GRAFANA_DB_USER: "${GRAFANA_DB_USER:-grafana_reader}"
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       GRAFANA_DB_PASSWORD_FILE: /run/secrets/grafana_db_password
-
     secrets:
       - db_password
       - grafana_db_password
-
     configs:
       - source: grafana_reader_setup
         target: /setup.sh
-
-    # Run the script; it exits after configuring the account.
     entrypoint: ["/bin/sh", "/setup.sh"]
-
     networks:
       - backend
-
     deploy:
       replicas: 1
       restart_policy:
@@ -144,27 +153,38 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
-
+ 
 networks:
+  # Shared with the nginx frontend. Created by stack "basic", reused here.
   frontend:
     external: true
+    name: frontend
+  # Private network of the databases and of everything that needs them.
+  # Also joined by the stats stack (Grafana and blackbox).
   backend:
-    external: true
-
+    name: backend
+    driver: overlay
+    attachable: true
+ 
 volumes:
   postgres_data_prod:
   redis_data_prod:
-  nfsvolume:
-    external: true
-
+  # NFS folder created by basic_nfs-init
+  app_backups:
+    driver_opts:
+      type: "nfs"
+      o: "addr=10.0.0.4,nolock,soft,rw"
+      device: ":/srv/nfs/shared/app-backups"
+ 
 secrets:
+  # Demo values committed on purpose so that deploying needs no extra step.
+  # A real production system would use externally managed secrets.
   db_password:
-    external: true
-
+    file: ./secrets/db_password.txt
   grafana_db_password:
-    # Same password used by stats
-    external: true
-
+    file: ./secrets/grafana_db_password.txt
+ 
 configs:
   grafana_reader_setup:
     file: ./setup-grafana-reader.sh
+ 

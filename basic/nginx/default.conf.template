@@ -1,12 +1,3 @@
-# Rendered at container start: ${DOMAIN} is replaced by envsubst.
-# nginx variables (written with a dollar and lowercase names) are left untouched.
-
-# Docker's embedded DNS. Upstreams are resolved at request time (see "set"
-# below), so nginx starts even if a backend service is not deployed yet:
-# that backend simply answers 502 until it exists.
-resolver 127.0.0.11 valid=10s ipv6=off;
-
-# WebSocket support: "upgrade" only when the client asks for it.
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -67,10 +58,18 @@ server {
     }
 }
 
-# Core app (stack app/coreprod, alias "core" on network frontend).
+# Core app (stack coreprod, alias "core" on network frontend)
+# and static files (Apache, alias "app-static" on network frontend).
 server {
     listen 443 ssl;
     server_name app.${DOMAIN};
+
+    location /static/ {
+        set $up_static http://app-static:80;
+        rewrite ^/static/(.*)$ /$1 break;
+        proxy_pass $up_static;
+        include /etc/nginx/proxy_params.conf;
+    }
 
     location / {
         set $up_core http://core:5000;

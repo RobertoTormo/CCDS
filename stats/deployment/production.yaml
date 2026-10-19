@@ -1,261 +1,181 @@
-version: "3.8" #Compose version 3 file format
-
+version: "3.8"
+ 
 services:
   node-exporter:
-    
-    image: 10.0.0.4:5000/node-exporter:v1.10.2
-
+    image: prom/node-exporter:v1.10.2
     command:
       # Read kernel metrics from the mounted host /proc
       - '--path.procfs=/host/proc'
       # Read hardware and device information from the mounted host /sys
       - '--path.sysfs=/host/sys'
-
       # Disable collectors that expect additional host access
       - '--collector.disable-defaults'
-
       # Collect CPU, memory and system load
       - '--collector.cpu'
       - '--collector.meminfo'
       - '--collector.loadavg'
-
     volumes:
       # Read-only mounts
       - '/proc:/host/proc:ro'
       - '/sys:/host/sys:ro'
-    
+    networks:
+      - default
     deploy:
-      # Run one exporter on every node
+      # One exporter on every node
       mode: global
-
       placement:
         constraints:
           - node.platform.os == linux
-
       restart_policy:
-        # Swarm keeps the exporter running if it exits
         condition: any
-
+ 
+  cadvisor:
+    # Check the tag exists before deploying: docker manifest inspect ghcr.io/google/cadvisor:0.60.6
+    image: ghcr.io/google/cadvisor:0.60.6
+    command:
+      - '--docker_only=true'
+      - '--enable_metrics=cpu,memory'
+    volumes:
+      # Host filesystem layout
+      - /:/rootfs:ro
+      # Host cgroup resource counters
+      - /sys:/sys:ro
+      # Docker container names and metadata
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - type: bind
+        source: ${CADVISOR_CONTAINERD_SOCKET:-/run/containerd/containerd.sock}
+        target: /run/containerd/containerd.sock
+        read_only: true
+    networks:
+      - default
+    deploy:
+      # Each instance monitors the containers of its own node
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+      restart_policy:
+        condition: any
+ 
   prometheus:
-    image: 10.0.0.4:5000/prometheus:v3.15.0
-
-    # Allow access to the manager's Docker socket
-    user: "0:0"
-
+    image: prom/prometheus:v3.15.0
     configs:
       - source: prometheus_config
-
         target: /etc/prometheus/prometheus.yml
-
     volumes:
+      # Local storage on whichever node runs the replica (no node pinning)
       - prometheus_data:/prometheus
-
-      # Query the manager's Docker API for Swarm discovery
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
-    deploy:
-      replicas: 1
-
-      placement:
-        constraints:
-          # Swarm discovery requires access to a manager's API
-          - node.role == manager
-
-          - node.hostname == balkan1
-
-      restart_policy:
-        condition: any
-
-  grafana:
-    image: 10.0.0.4:5000/grafana:13.2.4
-
-    environment:
-      # Pass the reader credentials and database name into Grafana
-      GRAFANA_DB_USER: ${GRAFANA_DB_USER:?Set GRAFANA_DB_USER}
-      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
-
-      # Public browser URL, supplied when deploying
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:?Set GRAFANA_ROOT_URL}
-      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
-
-
-      GF_DATASOURCE_POSTGRES_PASSWORD__FILE: /run/secrets/grafana_db_password
-      # Read the initial admin password from a Swarm secret
-      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
-
-    secrets:
-      - grafana_admin_password
-
-      - grafana_db_password
-
-    #Configure connection to prometheus
-    configs:
-      - source: grafana_datasource
-        target: /etc/grafana/provisioning/datasources/prometheus.yml
-
-        #Tells grafana where to find dashboards JSON files
-      - source: grafana_dashboards
-        target: /etc/grafana/provisioning/dashboards/default.yaml
-
-      - source: node_overview
-        target: /etc/grafana/dashboards/node-overview.json
-
-    volumes:
-      # Store Grafana's users, settings and saved dashboards
-      - grafana_data:/var/lib/grafana
-
-    deploy:
-      replicas: 1
-
-      placement:
-        constraints:
-          # Keep Grafana attached to the same node's storage
-          - node.hostname == balkan1
-
-      labels:
-        # Allow the infrastructure's Traefik to discover Grafana
-        - "traefik.enable=true"
-
-        # Reach Grafana through their shared network
-        - "traefik.docker.network=frontend"
-
-        # Match /grafana and everything beneath /grafana/
-        - "traefik.http.routers.stats-grafana.rule=Path(`/grafana`) || PathPrefix(`/grafana/`)"
-
-        # Use the existing HTTP entrypoint
-        - "traefik.http.routers.stats-grafana.entrypoints=web"
-
-        # Explicitly connect this router to its backend
-        - "traefik.http.routers.stats-grafana.service=stats-grafana"
-
-        # Grafana's container listens on port 3000
-        - "traefik.http.services.stats-grafana.loadbalancer.server.port=3000"
-
-      restart_policy:
-        condition: any
-      
-    
     networks:
-      # Keep access to Prometheus in the stats project
       - default
-
-      # Allow Grafana to reach the app's PostgreSQL service
-      - app_backend
-      
-      #Allow Traefik to reach Grafana
+      # Needed to probe the app services (coreprod_core, coreprod_redis)
+      - backend
+      # Needed to probe the public Atenea URL through nginx
       - frontend
-
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: any
+ 
   blackbox:
-
-    image: 10.0.0.4:5000/blackbox-exporter:v0.29.0
+    image: prom/blackbox-exporter:v0.29.0
     command:
       # Load our check definitions
       - '--config.file=/etc/blackbox/blackbox.yaml'
     configs:
       - source: blackbox_config
         target: /etc/blackbox/blackbox.yaml
-
-    deploy:
-
-      replicas: 2
-
-      placement:
-        # Keep the replicas on separate nodes
-        max_replicas_per_node: 1
-
-      restart_policy:
-        condition: any
-
     networks:
       # Allow Prometheus to reach this exporter
       - default
       # Allow the exporter to check the app services
-      - app_backend
-
-  cadvisor:
-    image: 10.0.0.4:5000/cadvisor:0.60.6
-
-    command:
-      - '--docker_only=true'
-      - '--enable_metrics=cpu,memory'
-
-    volumes:
-      # Read the host filesystem layout
-      - /:/rootfs:ro
-
-      # Read the host's cgroup resource counters
-      - /sys:/sys:ro
-
-      # Obtain Docker container names and metadata
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
-      # Docker metadata; verify this directory on the real nodes
-      - /var/lib/docker:/var/lib/docker:ro
-
-      #TODO: verify source 
-      - type: bind
-        source: ${CADVISOR_CONTAINERD_SOCKET:?Set CADVISOR_CONTAINERD_SOCKET}
-        target: /run/containerd/containerd.sock
-        read_only: true
-
-    networks:
-      - default
-
+      - backend
+      # Allow the exporter to check Atenea through nginx
+      - frontend
     deploy:
-      # Each instance monitors containers on its own node
-      mode: global
-
+      replicas: 2
       placement:
-        constraints:
-          - node.platform.os == linux
-
+        # Keep the replicas on separate nodes
+        max_replicas_per_node: 1
       restart_policy:
         condition: any
-
-# Declare persistent storage managed by Docker
-volumes:
-  prometheus_data:
-  grafana_data:
-
-configs:
-  prometheus_config:
-    file: ./prometheus.yaml
-
-  grafana_datasource:
-    file: ./grafana-datasource.yaml
-
-  # Dashboard discovery settings
-  grafana_dashboards:
-    file: ./grafana-dashboards.yaml
-
-  # Panels, queries and layout
-  node_overview:
-    file: ./node-overview.json
-
-  blackbox_config:
-    # Supply the check definitions as configuration
-    file: ./blackbox-prometheus.yaml
-
+ 
+  grafana:
+    image: grafana/grafana:13.2.4
+    environment:
+      # Reader credentials and database name used by the PostgreSQL datasource
+      GRAFANA_DB_USER: "${GRAFANA_DB_USER:-grafana_reader}"
+      POSTGRES_DB: "${POSTGRES_DB:-coredb}"
+      # Public browser URL, served under /grafana by nginx
+      GF_SERVER_ROOT_URL: "${GRAFANA_ROOT_URL:-https://balkan-ccds.duckdns.org/grafana/}"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_DATASOURCE_POSTGRES_PASSWORD__FILE: /run/secrets/grafana_db_password
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      # Stateless replicas: everyone sees the provisioned dashboards as Viewer
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    secrets:
+      - grafana_admin_password
+      - grafana_db_password
+    configs:
+      - source: grafana_datasource
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+      # Tells Grafana where to find the dashboard JSON files
+      - source: grafana_dashboards
+        target: /etc/grafana/provisioning/dashboards/default.yaml
+      - source: node_overview
+        target: /etc/grafana/dashboards/node-overview.json
+    networks:
+      # Reach Prometheus
+      - default
+      # Reach the app's PostgreSQL
+      - backend
+      # Reach nginx (alias stats_grafana is the service name on this network)
+      - frontend
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: any
+ 
 networks:
+  # Private network of the monitoring stack (stats_default)
   default:
-    # Private network for communication within the monitoring stack.
-    # Deploying as stats creates the network stats_default
     driver: overlay
-
+  # Shared networks, created by the stacks "basic" and "coreprod", reused here
   frontend:
-    # Existing infrastructure network used by Traefik
     external: true
-
-  app_backend:
-    # We keep our existing network name, but connect it to production network named backend
+    name: frontend
+  backend:
     external: true
     name: backend
-
-
+ 
+volumes:
+  prometheus_data:
+ 
+configs:
+  # Swarm configs are immutable: when a file changes, bump the name (_v2, _v3...)
+  prometheus_config:
+    name: prometheus_config_v2
+    file: ./prometheus.yaml
+  grafana_datasource:
+    file: ./grafana-datasource.yaml
+  grafana_dashboards:
+    file: ./grafana-dashboards.yaml
+  node_overview:
+    file: ./node-overview.json
+  blackbox_config:
+    file: ./blackbox-prometheus.yaml
+ 
 secrets:
+  # Demo values committed on purpose so that deploying needs no extra step.
   grafana_admin_password:
-    external: true
-
+    file: ../secrets/grafana_admin_password.txt
   grafana_db_password:
-    # Shared with the database account-setup service
-    external: true
+    # Same file as the app stack: it is the password of the Grafana reader account
+    file: ../../app/secrets/grafana_db_password.txt
